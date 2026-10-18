@@ -1,0 +1,50 @@
+# Builds the iOS app on GitHub's macOS machines, so no Mac is needed.
+# Output: an unsigned Slapped.ipa (Actions run → Artifacts) to sideload with
+# Sideloadly / AltStore from Windows using a free Apple ID.
+name: Build iOS app
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Slapped.xcodeproj \
+            -scheme Slapped \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            | tee build.log | grep -E "error:|warning: .*deprecated|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Package .ipa
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/Slapped.app Payload/
+          zip -qr Slapped.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Slapped-ipa
+          path: Slapped.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
