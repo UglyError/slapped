@@ -59,8 +59,7 @@ struct ScanView: View {
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
-                CameraPicker { image in Task { await process(image) } }
-                    .ignoresSafeArea()
+                CameraScreen { image in Task { await process(image) } }
             }
             .onChange(of: photoItem) { _, item in
                 guard let item else { return }
@@ -140,17 +139,14 @@ struct ScanView: View {
     private var reviewView: some View {
         VStack(spacing: 20) {
             ZStack {
-                Checkerboard()
                 if let finalImage {
-                    Image(uiImage: finalImage)
-                        .resizable()
-                        .scaledToFit()
-                        .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
-                        .padding(24)
+                    // replays whenever the cut-out changes (manual cut-out, full-photo toggle)
+                    PeelRevealView(sticker: finalImage, photo: original)
+                        .id(ObjectIdentifier(finalImage))
                 }
             }
             .frame(maxHeight: .infinity)
-            .card()
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             if cutout == nil {
                 Label("Couldn't find the sticker automatically. Cut it out by hand, or the full photo will be used.",
