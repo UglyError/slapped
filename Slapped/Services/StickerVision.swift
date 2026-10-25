@@ -7,7 +7,7 @@ enum StickerCutout {
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
     /// Turns a photo into a clean, front-facing sticker: lifts the object nearest the centre,
-    /// evens out the lighting, straightens it, and adds a white die-cut border with a little gloss.
+    /// evens out the lighting, straightens it, and trims it to a crisp edge.
     /// Returns nil when Vision can't find a subject (or on the Simulator, which lacks the model).
     static func cutout(_ image: UIImage) async -> UIImage? {
         let input = image.resized(maxDimension: 1600)
@@ -57,7 +57,97 @@ enum StickerCutout {
 
         guard let rendered = context.createCGImage(sticker, from: sticker.extent),
               let trimmed = rendered.trimmingTransparentEdges() else { return nil }
-        return dieCut(trimmed)
+        return UIImage(cgImage: trimmed)
+    }
+
+    /// Manual cut-out: `outline` is a finger-drawn loop in image pixels (top-left origin).
+    static func cutout(_ image: UIImage, tracing outline: [CGPoint]) async -> UIImage? {
+        guard outline.count >= 3 else { return nil }
+        return await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let cgImage = image.cgImage else { return nil }
+            let path = smoothedPath(through: outline)
+            let source = CIImage(cgImage: cgImage)
+            guard let shape = mask(for: path, size: image.size) else { return nil }
+            let cut = corrected(source, within: shape).applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage.empty(),
+                kCIInputMaskImageKey: shape,
+            ])
+            guard let rendered = context.createCGImage(cut, from: cut.extent),
+                  let trimmed = rendered.trimmingTransparentEdges() else { return nil }
+            return UIImage(cgImage: trimmed)
+        }.value
+    }
+
+    /// Manual cut-out for rectangular stickers: corners (top-left, top-right, bottom-right,
+    /// bottom-left) in image pixels, top-left origin. The result is flattened to face-on.
+    static func cutout(_ image: UIImage, corners: [CGPoint]) async -> UIImage? {
+        guard corners.count == 4 else { return nil }
+        return await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let cgImage = image.cgImage else { return nil }
+            let height = image.size.height
+            let path = CGMutablePath()
+            path.addLines(between: corners)
+            path.closeSubpath()
+            guard let shape = mask(for: path, size: image.size) else { return nil }
+            // Core Image's origin is bottom-left
+            func vector(_ p: CGPoint) -> CIVector { CIVector(x: p.x, y: height - p.y) }
+            let flat = corrected(CIImage(cgImage: cgImage), within: shape)
+                .applyingFilter("CIPerspectiveCorrection", parameters: [
+                    "inputTopLeft": vector(corners[0]),
+                    "inputTopRight": vector(corners[1]),
+                    "inputBottomRight": vector(corners[2]),
+                    "inputBottomLeft": vector(corners[3]),
+                ])
+            guard let rendered = context.createCGImage(flat, from: flat.extent) else { return nil }
+            return UIImage(cgImage: rendered)
+        }.value
+    }
+
+    /// Rectangle in the photo to pre-place the corner handles, in image pixels (top-left origin).
+    static func detectedCorners(in image: UIImage) async -> [CGPoint]? {
+        await Task.detached(priority: .userInitiated) { () -> [CGPoint]? in
+            guard let cgImage = image.cgImage else { return nil }
+            let request = VNDetectRectanglesRequest()
+            request.maximumObservations = 1
+            request.minimumConfidence = 0.5
+            request.minimumAspectRatio = 0.15
+            request.minimumSize = 0.15
+            try? VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+            guard let quad = request.results?.first else { return nil }
+            let w = image.size.width, h = image.size.height
+            return [quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft]
+                .map { CGPoint(x: $0.x * w, y: (1 - $0.y) * h) }
+        }.value
+    }
+
+    /// Rounds off a jittery finger trace with quadratic curves through the midpoints.
+    private static func smoothedPath(through points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        let closed = points + [points[0]]
+        path.move(to: CGPoint(x: (closed[0].x + closed[1].x) / 2, y: (closed[0].y + closed[1].y) / 2))
+        for i in 1..<closed.count {
+            let current = closed[i], next = closed[(i + 1) % closed.count]
+            path.addQuadCurve(to: CGPoint(x: (current.x + next.x) / 2, y: (current.y + next.y) / 2), control: current)
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    /// White-on-black mask of a path (image pixels, top-left origin) with a soft anti-aliased edge.
+    private static func mask(for path: CGPath, size: CGSize) -> CIImage? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            UIColor.black.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor.white.setFill()
+            ctx.cgContext.addPath(path)
+            ctx.cgContext.fillPath()
+        }
+        guard let cgImage = image.cgImage else { return nil }
+        let extent = CGRect(origin: .zero, size: size)
+        return CIImage(cgImage: cgImage).applyingGaussianBlur(sigma: 1.0).cropped(to: extent)
     }
 
     /// The instance under the centre of the frame, falling back to every instance.
@@ -155,46 +245,6 @@ enum StickerCutout {
         return (0.85...1.12).contains(ratio) ? quad : nil
     }
 
-    /// White die-cut border plus a soft diagonal sheen, like a real vinyl sticker.
-    private static func dieCut(_ image: CGImage) -> UIImage? {
-        let border = max(8, CGFloat(max(image.width, image.height)) * 0.035)
-        let canvas = CGRect(x: 0, y: 0,
-                            width: CGFloat(image.width) + border * 4,
-                            height: CGFloat(image.height) + border * 4)
-        let art = CIImage(cgImage: image).transformed(by: CGAffineTransform(translationX: border * 2, y: border * 2))
-
-        let silhouette = art.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-            "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-            "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-            "inputBiasVector": CIVector(x: 1, y: 1, z: 1, w: 0),
-        ])
-        // grow, then blur + threshold so the border follows smooth curves like a real die-cut
-        let backing = silhouette
-            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: border])
-            .applyingGaussianBlur(sigma: Double(border) * 0.45)
-            .applyingFilter("CIColorMatrix", parameters: [
-                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 5),
-                "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: -2),
-            ])
-            .applyingFilter("CIColorClamp")
-            .applyingGaussianBlur(sigma: 0.8)
-            .cropped(to: canvas)
-        let clear = CIImage(color: .clear).cropped(to: canvas)
-        let sticker = art.composited(over: backing).composited(over: clear)
-
-        let gradient = CIFilter.linearGradient()
-        gradient.point0 = CGPoint(x: 0, y: canvas.height)
-        gradient.point1 = CGPoint(x: canvas.width * 0.55, y: canvas.height * 0.45)
-        gradient.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 0.08)
-        gradient.color1 = CIColor(red: 1, green: 1, blue: 1, alpha: 0)
-        let sheen = (gradient.outputImage ?? clear).cropped(to: canvas)
-            .applyingFilter("CISourceAtopCompositing", parameters: [kCIInputBackgroundImageKey: sticker])
-
-        guard let output = context.createCGImage(sheen, from: canvas) else { return nil }
-        return UIImage(cgImage: output)
-    }
 }
 
 /// Area, bounding box and orientation of a subject mask (image moments on a downsampled copy).

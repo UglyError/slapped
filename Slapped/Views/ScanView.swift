@@ -13,6 +13,7 @@ struct ScanView: View {
     @State private var cutout: UIImage?
     @State private var useOriginal = false
     @State private var showCamera = false
+    @State private var showManual = false
     @State private var photoItem: PhotosPickerItem?
 
     @State private var name = ""
@@ -46,6 +47,14 @@ struct ScanView: View {
                 if stage != .start && stage != .done && stage != .saving {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel", action: reset)
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showManual) {
+                if let original {
+                    ManualCutoutView(image: original) { manual in
+                        cutout = manual
+                        useOriginal = false
                     }
                 }
             }
@@ -144,7 +153,7 @@ struct ScanView: View {
             .card()
 
             if cutout == nil {
-                Label("Couldn't isolate the sticker, so the full photo will be used. Try getting closer with a plain background.",
+                Label("Couldn't find the sticker automatically. Cut it out by hand, or the full photo will be used.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -152,6 +161,13 @@ struct ScanView: View {
                 Toggle("Use full photo instead of cutout", isOn: $useOriginal.animation())
                     .font(.subheadline)
                     .tint(.brand)
+            }
+
+            Button {
+                showManual = true
+            } label: {
+                Label(cutout == nil ? "Cut out manually" : "Not right? Cut out manually", systemImage: "scissors")
+                    .font(.subheadline.weight(.semibold))
             }
 
             HStack(spacing: 12) {
