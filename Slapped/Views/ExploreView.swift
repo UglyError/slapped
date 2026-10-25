@@ -6,6 +6,8 @@ struct ExploreView: View {
     @State private var fresh: [StickerCard] = []
     @State private var hunters: [ProfileStats] = []
     @State private var nearbyUnavailable = false
+    @State private var weekly = false
+    @State private var weeklyHunters: [API.WeeklyHunter] = []
 
     @State private var query = ""
     @State private var stickerResults: [StickerCard] = []
@@ -51,14 +53,37 @@ struct ExploreView: View {
 
             if !hunters.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: "Top hunters", systemImage: "trophy.fill")
+                    HStack {
+                        SectionHeader(title: "Top hunters", systemImage: "trophy.fill")
+                        Picker("Period", selection: $weekly) {
+                            Text("All time").tag(false)
+                            Text("This week").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                    }
                     VStack(spacing: 0) {
-                        ForEach(Array(hunters.enumerated()), id: \.element.id) { index, hunter in
-                            NavigationLink(value: Route.profile(hunter.id)) {
-                                HunterRow(rank: index + 1, hunter: hunter)
+                        if weekly {
+                            if weeklyHunters.isEmpty {
+                                Text("No finds this week yet. Be the first!")
+                                    .font(.subheadline).foregroundStyle(.secondary).padding()
                             }
-                            .buttonStyle(.plain)
-                            if index < hunters.count - 1 { Divider().padding(.leading, 60) }
+                            ForEach(Array(weeklyHunters.enumerated()), id: \.element.id) { index, hunter in
+                                NavigationLink(value: Route.profile(hunter.id)) {
+                                    LeaderRow(rank: index + 1, username: hunter.username,
+                                              avatarUrl: hunter.avatarUrl, finds: hunter.finds)
+                                }
+                                .buttonStyle(.plain)
+                                if index < weeklyHunters.count - 1 { Divider().padding(.leading, 60) }
+                            }
+                        } else {
+                            ForEach(Array(hunters.enumerated()), id: \.element.id) { index, hunter in
+                                NavigationLink(value: Route.profile(hunter.id)) {
+                                    HunterRow(rank: index + 1, hunter: hunter)
+                                }
+                                .buttonStyle(.plain)
+                                if index < hunters.count - 1 { Divider().padding(.leading, 60) }
+                            }
                         }
                     }
                     .card()
@@ -128,6 +153,7 @@ struct ExploreView: View {
         trending = (try? await trendingTask) ?? trending
         fresh = (try? await freshTask) ?? fresh
         hunters = (try? await huntersTask) ?? hunters
+        weeklyHunters = (try? await API.weeklyHunters()) ?? weeklyHunters
 
         do {
             let location = try await LocationManager.shared.currentLocation()

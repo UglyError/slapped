@@ -1,4 +1,5 @@
 import SwiftUI
+import MapKit
 import PhotosUI
 
 struct ProfileView: View {
@@ -8,14 +9,16 @@ struct ProfileView: View {
     @State private var profile: ProfileStats?
     @State private var collection: [StickerCard] = []
     @State private var finds: [StickerCard] = []
-    @State private var showingFinds = false
+    @State private var tab: ProfileTab = .collection
+
+    private enum ProfileTab { case collection, finds, map }
     @State private var showEdit = false
     @State private var showTrade = false
     @State private var reporting: ReportTarget?
     @State private var confirmBlock = false
 
     private var isMe: Bool { userID == app.userID }
-    private var shown: [StickerCard] { showingFinds ? finds : collection }
+    private var shown: [StickerCard] { tab == .finds ? finds : collection }
     private let grid = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
@@ -23,16 +26,19 @@ struct ProfileView: View {
             VStack(spacing: 18) {
                 if let profile { header(profile) }
 
-                Picker("", selection: $showingFinds) {
-                    Text("Collection (\(collection.count))").tag(false)
-                    Text("Finds (\(finds.count))").tag(true)
+                Picker("", selection: $tab) {
+                    Text("Collection (\(collection.count))").tag(ProfileTab.collection)
+                    Text("Finds (\(finds.count))").tag(ProfileTab.finds)
+                    Text("Map").tag(ProfileTab.map)
                 }
                 .pickerStyle(.segmented)
 
-                if shown.isEmpty {
+                if tab == .map {
+                    FindsMapView(stickers: finds)
+                } else if shown.isEmpty {
                     EmptyStateView(
                         systemImage: "seal",
-                        title: showingFinds ? "No finds yet" : "Empty collection",
+                        title: tab == .finds ? "No finds yet" : "Empty collection",
                         message: isMe ? "Head out and scan your first sticker." : "Nothing here yet."
                     )
                 } else {

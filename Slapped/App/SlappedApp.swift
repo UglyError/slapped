@@ -137,6 +137,7 @@ final class AppState {
 
 struct RootView: View {
     @Environment(AppState.self) private var app
+    @AppStorage("seenOnboarding") private var seenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -158,6 +159,10 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await app.resume() } }
+        }
+        .fullScreenCover(isPresented: Binding(get: { app.session != nil && !seenOnboarding },
+                                              set: { if !$0 { seenOnboarding = true } })) {
+            OnboardingView { seenOnboarding = true }
         }
         .sheet(isPresented: $app.needsNewPassword) {
             NewPasswordView()

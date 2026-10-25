@@ -12,6 +12,10 @@ struct StickerDetailView: View {
     @State private var confirmBlock = false
     @State private var confirmDelete = false
     @State private var actionError: String?
+    @State private var doubleTaps = 0
+    @State private var burst = false
+    @State private var showZoom = false
+    @State private var shareItems: [Any]?
     @Environment(\.dismiss) private var dismiss
 
     init(sticker: StickerCard) {
@@ -26,6 +30,18 @@ struct StickerDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 StickerArtwork(url: sticker.imageURL, padding: 32)
                     .frame(height: 340)
+                    .overlay {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 110))
+                            .foregroundStyle(LinearGradient(colors: [.yellow, .orange, .red], startPoint: .top, endPoint: .bottom))
+                            .shadow(color: .orange.opacity(0.6), radius: 16)
+                            .scaleEffect(burst ? 1.15 : 0.3)
+                            .opacity(burst ? 1 : 0)
+                            .allowsHitTesting(false)
+                    }
+                    .onTapGesture(count: 2) { giveProps() }
+                    .onTapGesture { showZoom = true }
+                    .accessibilityHint("Double-tap to give props. Tap to view full screen.")
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
@@ -81,7 +97,7 @@ struct StickerDetailView: View {
                 }
 
                 HStack {
-                    LikeButton(sticker: sticker).id(sticker.likedByMe)
+                    LikeButton(sticker: sticker, doubleTaps: doubleTaps).id(sticker.likedByMe)
                     Spacer()
                 }
                 .padding(.horizontal, 4)
@@ -95,7 +111,7 @@ struct StickerDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    ShareLink(item: "Check out \"\(sticker.name)\" on Slapped, found by @\(sticker.finderUsername)")
+                    Button("Share", systemImage: "square.and.arrow.up") { Task { await prepareShare() } }
                     if canDelete {
                         Button("Delete sticker", systemImage: "trash", role: .destructive) { confirmDelete = true }
                     }
@@ -111,6 +127,10 @@ struct StickerDetailView: View {
             }
         }
         .reportDialog(target: $reporting)
+        .fullScreenCover(isPresented: $showZoom) { ZoomImageView(url: sticker.imageURL) }
+        .sheet(isPresented: Binding(get: { shareItems != nil }, set: { if !$0 { shareItems = nil } })) {
+            ActivityShareSheet(items: shareItems ?? []).presentationDetents([.medium, .large])
+        }
         .alert("Block @\(sticker.finderUsername)?", isPresented: $confirmBlock) {
             Button("Block", role: .destructive) {
                 Task {
@@ -207,6 +227,28 @@ struct StickerDetailView: View {
             Button("Open in Maps", systemImage: "arrow.up.right.square", action: openInMaps)
                 .font(.subheadline.weight(.semibold))
         }
+    }
+
+    private func giveProps() {
+        doubleTaps += 1
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { burst = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(650))
+            withAnimation(.easeOut(duration: 0.25)) { burst = false }
+        }
+    }
+
+    private func prepareShare() async {
+        let text = "Check out \"\(sticker.name)\" on Slapped, found by @\(sticker.finderUsername)"
+        guard let url = sticker.imageURL,
+              let data = try? await URLSession.shared.data(from: url).0,
+              let art = UIImage(data: data) else {
+            shareItems = [text]
+            return
+        }
+        let renderer = ImageRenderer(content: ShareCardView(sticker: sticker, art: art))
+        renderer.scale = 3
+        shareItems = renderer.uiImage.map { [$0, text] } ?? [text]
     }
 
     private func openInMaps() {

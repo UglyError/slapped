@@ -46,6 +46,33 @@ extension API {
         }
     }
 
+    // MARK: Leaderboard
+
+    struct WeeklyHunter: Identifiable {
+        let id: UUID
+        let username: String
+        let avatarUrl: String?
+        let finds: Int
+    }
+
+    static func weeklyHunters(limit: Int = 10) async throws -> [WeeklyHunter] {
+        let since = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-7 * 86_400))
+        let rows: [FinderRow] = try await supabase.from("sticker_cards")
+            .select("finder_id, finder_username, finder_avatar_url")
+            .gte("created_at", value: since)
+            .limit(2000)
+            .execute().value
+        let grouped = Dictionary(grouping: rows, by: \.finder_id)
+        return grouped.values
+            .compactMap { group in
+                group.first.map { WeeklyHunter(id: $0.finder_id, username: $0.finder_username,
+                                               avatarUrl: $0.finder_avatar_url, finds: group.count) }
+            }
+            .sorted { $0.finds > $1.finds }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     // MARK: Moderation
 
     static func report(_ target: ReportTarget, reason: String) async throws {
@@ -129,6 +156,7 @@ extension API {
     }
 }
 
+private struct FinderRow: Decodable { let finder_id: UUID; let finder_username: String; let finder_avatar_url: String? }
 private struct CommentRow: Encodable { let sticker_id: UUID; let user_id: UUID; let body: String }
 private struct BlockRow: Encodable { let blocker_id: UUID; let blocked_id: UUID }
 private struct ActivityParams: Encodable { let p_limit: Int }

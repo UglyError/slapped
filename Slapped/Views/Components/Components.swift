@@ -66,11 +66,14 @@ struct ValueChip: View {
 
 struct LikeButton: View {
     let stickerID: UUID
+    /// Bumped by a double-tap elsewhere; gives props if not already given.
+    var doubleTaps = 0
     @State private var liked: Bool
     @State private var count: Int
 
-    init(sticker: StickerCard) {
+    init(sticker: StickerCard, doubleTaps: Int = 0) {
         stickerID = sticker.id
+        self.doubleTaps = doubleTaps
         _liked = State(initialValue: sticker.likedByMe)
         _count = State(initialValue: sticker.likeCount)
     }
@@ -87,6 +90,9 @@ struct LikeButton: View {
         .buttonStyle(.plain)
         .sensoryFeedback(.impact(weight: .light), trigger: liked)
         .accessibilityLabel(liked ? "Remove props" : "Give props")
+        .onChange(of: doubleTaps) {
+            if !liked { Task { await toggle() } }
+        }
     }
 
     private func toggle() async {

@@ -5,6 +5,11 @@ import SwiftUI
 struct TradeComposerView: View {
     let recipientID: UUID
     var preselected: UUID?
+    var wantedIDs: Set<UUID> = []
+    var givingIDs: Set<UUID> = []
+    var title = "Propose trade"
+    /// Runs after the offer is sent (a counter-offer declines the original here).
+    var onSent: (() async -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var app
@@ -45,7 +50,7 @@ struct TradeComposerView: View {
                 .padding()
             }
             .background(Color.bg)
-            .navigationTitle("Propose trade")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -126,6 +131,8 @@ struct TradeComposerView: View {
         theirs = (try? await theirStickers) ?? []
         mine = (try? await myStickers) ?? []
         if let preselected, theirs.contains(where: { $0.id == preselected }) { wanted.insert(preselected) }
+        wanted.formUnion(wantedIDs.filter { id in theirs.contains { $0.id == id } })
+        giving.formUnion(givingIDs.filter { id in mine.contains { $0.id == id } })
         loaded = true
     }
 
@@ -134,6 +141,7 @@ struct TradeComposerView: View {
         error = nil
         do {
             try await API.proposeTrade(to: recipientID, offering: Array(giving), requesting: Array(wanted), message: message)
+            await onSent?()
             dismiss()
         } catch {
             self.error = error.localizedDescription
@@ -146,6 +154,7 @@ struct TradeComposerView: View {
 
 struct TradesView: View {
     @Environment(AppState.self) private var app
+    @State private var countering: Trade?
     @State private var trades: [Trade] = []
     @State private var tab: Tab = .incoming
     @State private var loaded = false
@@ -187,6 +196,19 @@ struct TradesView: View {
         .navigationTitle("Trades")
         .task { await load() }
         .refreshable { await load() }
+        .sheet(item: $countering) { trade in
+            TradeComposerView(
+                recipientID: trade.proposerId,
+                wantedIDs: Set(trade.offered.map(\.id)),
+                givingIDs: Set(trade.requested.map(\.id)),
+                title: "Counter offer",
+                onSent: {
+                    _ = try? await API.respondToTrade(trade.id, accept: false)
+                    await load()
+                    await app.refresh()
+                }
+            )
+        }
         .alert("Trade", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(notice ?? "") }
@@ -209,6 +231,9 @@ struct TradesView: View {
                 _ = try await API.respondToTrade(trade.id, accept: false)
             case .cancel:
                 try await API.cancelTrade(trade.id)
+            case .counter:
+                countering = trade
+                return
             }
         } catch {
             notice = error.localizedDescription
@@ -219,7 +244,7 @@ struct TradesView: View {
 }
 
 struct TradeCard: View {
-    enum Action { case accept, decline, cancel }
+    enum Action { case accept, decline, cancel, counter }
 
     let trade: Trade
     let myID: UUID?
@@ -258,6 +283,7 @@ struct TradeCard: View {
                 HStack(spacing: 10) {
                     if incoming {
                         Button("Decline") { run(.decline) }.buttonStyle(BrandButtonStyle(filled: false))
+                        Button("Counter") { run(.counter) }.buttonStyle(BrandButtonStyle(filled: false))
                         Button("Accept") { run(.accept) }.buttonStyle(BrandButtonStyle())
                     } else {
                         Button("Cancel offer") { run(.cancel) }.buttonStyle(BrandButtonStyle(filled: false))
