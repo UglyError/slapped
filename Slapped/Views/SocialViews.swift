@@ -437,6 +437,7 @@ struct NewBadgeToast: View {
 
 struct SettingsView: View {
     @Environment(AppState.self) private var app
+    @AppStorage("appearance") private var appearance: Appearance = .system
     @State private var showEdit = false
     @State private var confirmDelete = false
     @State private var deleting = false
@@ -451,6 +452,16 @@ struct SettingsView: View {
                 NavigationLink(value: Route.blockedUsers) {
                     Label("Blocked users", systemImage: "hand.raised")
                 }
+            }
+            Section("Appearance") {
+                Picker("Theme", selection: $appearance) {
+                    ForEach(Appearance.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
             }
             Section("About") {
                 Link(destination: AppConfig.termsURL) { Label("Terms of Use", systemImage: "doc.text") }

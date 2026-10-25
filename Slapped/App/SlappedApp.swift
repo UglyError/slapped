@@ -19,6 +19,7 @@ let supabase = SupabaseClient(supabaseURL: AppConfig.supabaseURL, supabaseKey: A
 @main
 struct SlappedApp: App {
     @State private var app = AppState()
+    @AppStorage("appearance") private var appearance: Appearance = .system
 
     init() {
         // sticker images are re-shown constantly across feed, map and profiles
@@ -30,6 +31,21 @@ struct SlappedApp: App {
             RootView()
                 .environment(app)
                 .tint(.brand)
+                .preferredColorScheme(appearance.colorScheme)
+        }
+    }
+}
+
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 }
