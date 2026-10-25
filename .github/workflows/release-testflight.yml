@@ -1,0 +1,77 @@
+# Signs the app and uploads it to App Store Connect / TestFlight. No Mac needed.
+# Run it from the Actions tab → "Release to TestFlight" → Run workflow.
+# Needs these repository secrets (see docs/RELEASE.md):
+#   APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY
+name: Release to TestFlight
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        run: |
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then echo "::error title=Missing secret::Add the $name repository secret (see docs/RELEASE.md)"; exit 1; fi
+          done
+
+      - name: Install App Store Connect key
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          echo "AUTH_ARGS=-allowProvisioningUpdates -authenticationKeyPath $HOME/private_keys/AuthKey_$ASC_KEY_ID.p8 -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID" >> "$GITHUB_ENV"
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Slapped.xcodeproj -scheme Slapped -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Slapped.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            $AUTH_ARGS | tee archive.log | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" || true
+          if ! grep -q "ARCHIVE SUCCEEDED" archive.log; then
+            errors=$(grep -E "error:" archive.log | sort -u | head -60)
+            [ -z "$errors" ] && errors=$(tail -40 archive.log)
+            echo "::error title=Archive errors::${errors//$'\n'/%0A}"
+            exit 1
+          fi
+
+      - name: Upload to App Store Connect
+        run: |
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath build/Slapped.xcarchive \
+            -exportOptionsPlist ExportOptions.plist -exportPath build/export \
+            $AUTH_ARGS | tee upload.log | tail -20 || true
+          if ! grep -qE "EXPORT SUCCEEDED|Upload succeeded" upload.log; then
+            errors=$(grep -iE "error" upload.log | sort -u | head -40)
+            [ -z "$errors" ] && errors=$(tail -40 upload.log)
+            echo "::error title=Upload errors::${errors//$'\n'/%0A}"
+            exit 1
+          fi
+          echo "::notice title=Uploaded::Build ${{ github.run_number }} is processing in App Store Connect. It appears in TestFlight in ~10-30 minutes."

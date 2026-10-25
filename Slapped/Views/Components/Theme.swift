@@ -54,7 +54,11 @@ extension View {
             switch route {
             case .sticker(let sticker): StickerDetailView(sticker: sticker)
             case .profile(let id): ProfileView(userID: id)
+            case .stickerID(let id): StickerLoaderView(id: id)
             case .trades: TradesView()
+            case .activity: ActivityView()
+            case .settings: SettingsView()
+            case .blockedUsers: BlockedUsersView()
             }
         }
     }

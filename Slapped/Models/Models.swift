@@ -20,6 +20,7 @@ struct StickerCard: Codable, Identifiable, Hashable {
     let ownerUsername: String
     let ownerAvatarUrl: String?
     let likedByMe: Bool
+    let commentCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, value
@@ -36,6 +37,7 @@ struct StickerCard: Codable, Identifiable, Hashable {
         case ownerUsername = "owner_username"
         case ownerAvatarUrl = "owner_avatar_url"
         case likedByMe = "liked_by_me"
+        case commentCount = "comment_count"
     }
 
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lng) }
@@ -56,6 +58,7 @@ struct ProfileStats: Codable, Identifiable, Hashable {
     let followers: Int
     let following: Int
     let followedByMe: Bool
+    let blockedByMe: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, username, bio, finds, owned, followers, following
@@ -64,6 +67,7 @@ struct ProfileStats: Codable, Identifiable, Hashable {
         case createdAt = "created_at"
         case collectionValue = "collection_value"
         case followedByMe = "followed_by_me"
+        case blockedByMe = "blocked_by_me"
     }
 
     var titleName: String { displayName?.isEmpty == false ? displayName! : username }
@@ -142,8 +146,70 @@ struct Transfer: Codable, Identifiable, Hashable {
     }
 }
 
+struct CommentCard: Codable, Identifiable, Hashable {
+    let id: UUID
+    let stickerId: UUID
+    let body: String
+    let createdAt: Date
+    let userId: UUID
+    let username: String
+    let avatarUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, body, username
+        case stickerId = "sticker_id"
+        case createdAt = "created_at"
+        case userId = "user_id"
+        case avatarUrl = "avatar_url"
+    }
+}
+
+struct ActivityItem: Codable, Identifiable, Hashable {
+    let kind: String
+    let actorId: UUID
+    let actorUsername: String
+    let actorAvatarUrl: String?
+    let stickerId: UUID?
+    let stickerName: String?
+    let stickerImageUrl: String?
+    let body: String?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case kind, body
+        case actorId = "actor_id"
+        case actorUsername = "actor_username"
+        case actorAvatarUrl = "actor_avatar_url"
+        case stickerId = "sticker_id"
+        case stickerName = "sticker_name"
+        case stickerImageUrl = "sticker_image_url"
+        case createdAt = "created_at"
+    }
+
+    var id: String { "\(kind)-\(actorId)-\(stickerId?.uuidString ?? "")-\(createdAt.timeIntervalSince1970)" }
+}
+
+struct Badge: Codable, Identifiable, Hashable {
+    let code: String
+    let title: String
+    let detail: String
+    let icon: String
+
+    var id: String { code }
+}
+
+struct BlockedUser: Codable, Identifiable, Hashable {
+    let blocked: MiniProfile
+
+    var id: UUID { blocked.id }
+}
+
 enum Route: Hashable {
     case sticker(StickerCard)
+    case stickerID(UUID)
     case profile(UUID)
     case trades
+    case activity
+    case settings
+    case blockedUsers
 }

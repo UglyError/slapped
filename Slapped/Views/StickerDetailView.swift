@@ -7,12 +7,18 @@ struct StickerDetailView: View {
     @State private var sticker: StickerCard
     @State private var transfers: [Transfer] = []
     @State private var showTrade = false
+    @State private var reporting: ReportTarget?
+    @State private var confirmBlock = false
+    @State private var confirmDelete = false
+    @State private var actionError: String?
+    @Environment(\.dismiss) private var dismiss
 
     init(sticker: StickerCard) {
         _sticker = State(initialValue: sticker)
     }
 
     private var isMine: Bool { sticker.ownerId == app.userID }
+    private var canDelete: Bool { isMine && sticker.finderId == app.userID && sticker.tradeCount == 0 }
 
     var body: some View {
         ScrollView {
@@ -78,11 +84,62 @@ struct StickerDetailView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 4)
+
+                CommentsSection(sticker: sticker)
             }
             .padding()
         }
         .background(Color.bg)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ShareLink(item: "Check out \"\(sticker.name)\" on Slapped, found by @\(sticker.finderUsername)")
+                    if canDelete {
+                        Button("Delete sticker", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                    }
+                    if sticker.finderId != app.userID {
+                        Button("Report sticker", systemImage: "flag") { reporting = .sticker(sticker.id) }
+                        Button("Block @\(sticker.finderUsername)", systemImage: "hand.raised", role: .destructive) {
+                            confirmBlock = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .reportDialog(target: $reporting)
+        .alert("Block @\(sticker.finderUsername)?", isPresented: $confirmBlock) {
+            Button("Block", role: .destructive) {
+                Task {
+                    try? await API.setBlocked(sticker.finderId, blocked: true)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't see each other's stickers, comments or activity, and open trades between you are cancelled.")
+        }
+        .alert("Delete this sticker?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    do {
+                        try await API.deleteSticker(sticker)
+                        await app.refresh()
+                        dismiss()
+                    } catch {
+                        actionError = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It's removed from the map and your collection. Someone could then log it again.")
+        }
+        .alert("Something went wrong", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(actionError ?? "") }
         .safeAreaInset(edge: .bottom) {
             if !isMine {
                 Button { showTrade = true } label: {

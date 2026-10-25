@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct FeedView: View {
+    @Environment(AppState.self) private var app
     @State private var followingOnly = false
+    @State private var canLoadMore = true
     @State private var stickers: [StickerCard] = []
     @State private var loaded = false
     @State private var error: String?
@@ -28,6 +30,9 @@ struct FeedView: View {
 
                     ForEach(stickers) { sticker in
                         StickerFeedCard(sticker: sticker)
+                            .onAppear {
+                                if sticker.id == stickers.last?.id { Task { await loadMore() } }
+                            }
                     }
                 }
                 .padding(.horizontal)
@@ -35,7 +40,20 @@ struct FeedView: View {
             }
             .background(Color.bg)
             .navigationTitle("Feed")
-            .refreshable { await load() }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: Route.activity) {
+                        Image(systemName: app.unseenActivity > 0 ? "bell.badge.fill" : "bell")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(Color.brand, Color.primary)
+                    }
+                    .accessibilityLabel("Activity")
+                }
+            }
+            .refreshable {
+                await load()
+                await app.refresh()
+            }
             .task(id: followingOnly) { await load() }
             .withRoutes()
         }
@@ -44,6 +62,7 @@ struct FeedView: View {
     private func load() async {
         do {
             stickers = try await API.feed(followingOnly: followingOnly)
+            canLoadMore = !followingOnly && stickers.count >= 30
             error = nil
         } catch is CancellationError {
             return
@@ -51,6 +70,15 @@ struct FeedView: View {
             self.error = error.localizedDescription
         }
         loaded = true
+    }
+
+    private func loadMore() async {
+        guard canLoadMore else { return }
+        canLoadMore = false
+        guard let more = try? await API.feed(followingOnly: false, offset: stickers.count) else { return }
+        let known = Set(stickers.map(\.id))
+        stickers += more.filter { !known.contains($0.id) }
+        canLoadMore = more.count >= 30
     }
 }
 
@@ -92,6 +120,12 @@ struct StickerFeedCard: View {
 
             HStack(spacing: 16) {
                 LikeButton(sticker: sticker)
+                NavigationLink(value: Route.sticker(sticker)) {
+                    Label("\(sticker.commentCount ?? 0)", systemImage: "bubble.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
                 if sticker.wasTraded {
                     Label("with @\(sticker.ownerUsername)", systemImage: "arrow.left.arrow.right")
                         .font(.caption)

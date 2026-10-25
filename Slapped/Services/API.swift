@@ -44,13 +44,13 @@ enum API {
 
     // MARK: Stickers
 
-    static func feed(followingOnly: Bool, limit: Int = 50) async throws -> [StickerCard] {
+    static func feed(followingOnly: Bool, limit: Int = 30, offset: Int = 0) async throws -> [StickerCard] {
         if followingOnly {
-            return try await supabase.rpc("following_feed", params: LimitParams(p_limit: limit)).execute().value
+            return try await supabase.rpc("following_feed", params: LimitParams(p_limit: 100)).execute().value
         }
         return try await supabase.from(cards).select()
             .order("created_at", ascending: false)
-            .limit(limit)
+            .range(from: offset, to: offset + limit - 1)
             .execute().value
     }
 
@@ -242,7 +242,7 @@ enum API {
         try await supabase.auth.session.user.id
     }
 
-    private static func uploadPNG(_ image: UIImage, name: String) async throws -> String {
+    static func uploadPNG(_ image: UIImage, name: String) async throws -> String {
         guard let data = image.pngData() else { throw APIError.imageEncoding }
         let uid = try await currentUserID()
         // storage policy only allows writes under the user's own lowercase uuid folder
@@ -269,6 +269,7 @@ enum API {
         "cannot_trade_with_self": "You can't trade with yourself.",
         "trade_not_pending": "This trade has already been settled.",
         "trade_not_found": "Trade not found.",
+        "comments_body_check": "Comments must be 1 to 280 characters.",
     ]
 
     static func mapped(_ error: Error) -> Error {

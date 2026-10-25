@@ -6,6 +6,9 @@ enum AppConfig {
     static let supabaseURL = URL(string: "https://olvjhnxrslklpzgaqcot.supabase.co")!
     static let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sdmpobnhyc2xrbHB6Z2FxY290Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMjYyMTgsImV4cCI6MjEwNzkwMjIxOH0.900SB9FDLyKktLez_oGrdpGse5Tw9ZtY5DtVFQH7JUE"
     static let storageBucket = "stickers"
+    static let termsURL = URL(string: "https://github.com/UglyError/slapped/blob/main/docs/terms.md")!
+    static let privacyURL = URL(string: "https://github.com/UglyError/slapped/blob/main/docs/privacy.md")!
+    static let supportURL = URL(string: "https://github.com/UglyError/slapped/issues")!
 }
 
 let supabase = SupabaseClient(supabaseURL: AppConfig.supabaseURL, supabaseKey: AppConfig.supabaseAnonKey)
@@ -13,6 +16,11 @@ let supabase = SupabaseClient(supabaseURL: AppConfig.supabaseURL, supabaseKey: A
 @main
 struct SlappedApp: App {
     @State private var app = AppState()
+
+    init() {
+        // sticker images are re-shown constantly across feed, map and profiles
+        URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 512 * 1024 * 1024)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -30,8 +38,16 @@ final class AppState {
     var isLoading = true
     var me: ProfileStats?
     var pendingIncoming = 0
+    var unseenActivity = 0
+    var activitySeenAt = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: "activitySeenAt"))
 
     var userID: UUID? { session?.user.id }
+
+    func markActivitySeen() {
+        activitySeenAt = .now
+        unseenActivity = 0
+        UserDefaults.standard.set(activitySeenAt.timeIntervalSince1970, forKey: "activitySeenAt")
+    }
 
     func start() async {
         for await (_, session) in supabase.auth.authStateChanges {
@@ -42,6 +58,7 @@ final class AppState {
             } else {
                 me = nil
                 pendingIncoming = 0
+                unseenActivity = 0
             }
         }
     }
@@ -50,6 +67,8 @@ final class AppState {
         guard let userID else { return }
         me = try? await API.profile(userID)
         pendingIncoming = (try? await API.pendingIncomingCount(for: userID)) ?? 0
+        let recent = (try? await API.activity(limit: 30)) ?? []
+        unseenActivity = recent.filter { $0.createdAt > activitySeenAt }.count
     }
 }
 

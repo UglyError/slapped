@@ -11,6 +11,8 @@ struct ProfileView: View {
     @State private var showingFinds = false
     @State private var showEdit = false
     @State private var showTrade = false
+    @State private var reporting: ReportTarget?
+    @State private var confirmBlock = false
 
     private var isMe: Bool { userID == app.userID }
     private var shown: [StickerCard] { showingFinds ? finds : collection }
@@ -48,18 +50,40 @@ struct ProfileView: View {
         .navigationTitle(profile.map { "@\($0.username)" } ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if isMe {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
+                if isMe {
+                    NavigationLink(value: Route.settings) { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Settings")
+                } else if let profile {
                     Menu {
-                        Button("Edit profile", systemImage: "pencil") { showEdit = true }
-                        Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-                            Task { await API.signOut() }
+                        Button("Report @\(profile.username)", systemImage: "flag") { reporting = .user(userID) }
+                        if profile.blockedByMe == true {
+                            Button("Unblock", systemImage: "hand.raised.slash") {
+                                Task {
+                                    try? await API.setBlocked(userID, blocked: false)
+                                    await load()
+                                }
+                            }
+                        } else {
+                            Button("Block", systemImage: "hand.raised", role: .destructive) { confirmBlock = true }
                         }
                     } label: {
-                        Image(systemName: "gearshape")
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
+        }
+        .reportDialog(target: $reporting)
+        .alert("Block @\(profile?.username ?? "")?", isPresented: $confirmBlock) {
+            Button("Block", role: .destructive) {
+                Task {
+                    try? await API.setBlocked(userID, blocked: true)
+                    await load()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't see each other's stickers, comments or activity, and open trades between you are cancelled.")
         }
         .sheet(isPresented: $showEdit, onDismiss: { Task { await load() } }) {
             if let profile { EditProfileView(profile: profile) }
@@ -92,6 +116,8 @@ struct ProfileView: View {
             .padding(.vertical, 12)
             .card()
 
+            BadgesRow(userID: userID)
+
             if isMe {
                 NavigationLink(value: Route.trades) {
                     HStack {
@@ -111,6 +137,10 @@ struct ProfileView: View {
                     .card()
                 }
                 .buttonStyle(.plain)
+            } else if profile.blockedByMe == true {
+                Label("You blocked this user", systemImage: "hand.raised.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
             } else {
                 HStack(spacing: 10) {
                     Button(profile.followedByMe ? "Following" : "Follow") {
