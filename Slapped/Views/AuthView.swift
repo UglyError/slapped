@@ -152,7 +152,7 @@ struct AuthView: View {
     }
 
     private var codeField: some View {
-        field("6-digit code", text: $code, systemImage: "number")
+        field("Code from your email", text: $code, systemImage: "number")
             .keyboardType(.numberPad)
             .textContentType(.oneTimeCode)
     }

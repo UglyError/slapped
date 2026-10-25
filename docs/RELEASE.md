@@ -8,7 +8,7 @@ Everything runs from a browser. You never need a Mac.
    This adds comments, activity, badges, blocking, reporting and account deletion. It's safe to run again.
 
 ## 2. Email codes (3 min)
-The app verifies emails and resets passwords with a 6-digit code instead of a link.
+The app verifies emails and resets passwords with a code instead of a link.
 In Supabase: **Authentication → Emails → Templates** (older dashboards: **Auth → Email Templates**).
 
 - **Confirm signup**: replace the body with:
