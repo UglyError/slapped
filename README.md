@@ -35,7 +35,7 @@
 | 🔁 **Trade** | Multi-sticker offers with a live clout balance |
 | 📰 **Feed** | Friends / everyone, props, comments |
 | 🔔 **Activity** | Props, comments, follows and trade offers |
-| 🏅 **Badges** | 12 Untappd-style badges for hunting, trading and exploring |
+| 🏅 **Badges** | 34 badges in bronze, silver, gold and platinum, with progress tracking |
 | 🛡️ **Safety** | Report, block, auto-hide reported content, delete account |
 
 ## Install (testing)
@@ -62,7 +62,7 @@ App Store / TestFlight steps are in **[docs/RELEASE.md](docs/RELEASE.md)**. Afte
 ## Setting up your own backend
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL Editor**: run [`0001_init.sql`](supabase/migrations/0001_init.sql), then [`0002_social_moderation.sql`](supabase/migrations/0002_social_moderation.sql).
+2. **SQL Editor**: run the files in [`supabase/migrations`](supabase/migrations) in order (`0001`, `0002`, `0003`).
 3. **Authentication → URL Configuration**: set Site URL to `slapped://auth-callback` and add `slapped://**` to Redirect URLs.
 4. Put your Project URL and anon key in `AppConfig` in [`SlappedApp.swift`](Slapped/App/SlappedApp.swift).
 
