@@ -1,5 +1,7 @@
 # Slapped
 
+**Releasing to the App Store: see [docs/RELEASE.md](docs/RELEASE.md).**
+
 Untappd for stickers. Find a sticker in the wild, scan it, and the app cuts it off the background. Name it, tag where you found it, and it goes into your collection. Then trade stickers with other hunters.
 
 - **Scan**: camera or photo → on-device subject cutout (Vision) → name + notes → GPS + reverse-geocoded spot name → logged.
@@ -9,6 +11,8 @@ Untappd for stickers. Find a sticker in the wild, scan it, and the app cuts it o
 - **Map**: every logged sticker as a pin; it loads whatever region you're looking at.
 - **Profiles**: Collection (stickers you own) vs Finds (stickers you scanned), stats, follow.
 - **Trading**: pick any of their stickers and any of yours, then send an offer. They accept or decline. Accepting swaps ownership atomically, records trade history, and auto-cancels other open offers that involve those stickers.
+- **Social**: comments, an activity feed (props, comments, follows, trade offers) and Untappd-style badges.
+- **Safety**: report stickers, comments and users (3 reports auto-hide), block users, in-app account deletion, and terms accepted at sign-up.
 - **Clout (the sticker currency)**: each sticker is worth `10 + 2×props + 5×trades`. Popular and frequently traded stickers are worth more. The trade screen shows both sides' clout so you can judge whether a deal is fair, and your profile shows your total collection value.
 
 ## Stack
@@ -20,7 +24,7 @@ Untappd for stickers. Find a sticker in the wild, scan it, and the app cuts it o
 
 ### 1. Supabase
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor**, paste in `supabase/migrations/0001_init.sql`, and run it. This creates the tables, policies, functions and the public `stickers` storage bucket.
+2. Open **SQL Editor** and run `supabase/migrations/0001_init.sql`, then `0002_social_moderation.sql`, in that order. This creates the tables, policies, functions and the public `stickers` storage bucket.
 3. Optional for testing: turn off **Authentication → Providers → Email → Confirm email** so sign-up logs you straight in.
 4. Copy the **Project URL** and **anon public key** from **Project Settings → API**.
 
