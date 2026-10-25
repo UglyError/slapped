@@ -25,8 +25,9 @@ enum StickerCutout {
                   forInstances: centeredInstance(in: observation), from: handler)
         else { return nil }
 
-        let mask = CIImage(cvPixelBuffer: maskBuffer)
-        var sticker = enhanced(CIImage(cgImage: cgImage)).applyingFilter("CIBlendWithMask", parameters: [
+        let source = CIImage(cgImage: cgImage)
+        let mask = refined(CIImage(cvPixelBuffer: maskBuffer), extent: source.extent)
+        var sticker = corrected(source, within: mask).applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: CIImage.empty(),
             kCIInputMaskImageKey: mask,
         ])
@@ -77,13 +78,60 @@ enum StickerCutout {
         return observation.allInstances
     }
 
-    private static func enhanced(_ image: CIImage) -> CIImage {
-        var output = image
-        for filter in image.autoAdjustmentFilters(options: [.redEye: false]) {
-            filter.setValue(output, forKey: kCIInputImageKey)
-            output = filter.outputImage ?? output
+    /// Cleans Vision's soft, wobbly mask: fills pinholes, shaves off the background halo,
+    /// and turns the edge into a crisp anti-aliased line.
+    private static func refined(_ mask: CIImage, extent: CGRect) -> CIImage {
+        let radius = max(2, extent.width / 400)
+        return mask
+            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: radius * 2])   // close holes…
+            .applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: radius * 2])   // …keeping the size
+            .applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: radius])       // shave the halo
+            .applyingGaussianBlur(sigma: Double(radius) * 0.8)
+            .applyingFilter("CIColorMatrix", parameters: [                                         // re-sharpen the edge
+                "inputRVector": CIVector(x: 6, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 6, y: 0, z: 0, w: 0),
+                "inputBVector": CIVector(x: 6, y: 0, z: 0, w: 0),
+                "inputBiasVector": CIVector(x: -2.5, y: -2.5, z: -2.5, w: 0),
+            ])
+            .applyingFilter("CIColorClamp")
+            .cropped(to: extent)
+    }
+
+    /// Gentle, sticker-only lighting fix: recover glare and shadows, then nudge exposure
+    /// only if the sticker itself is clearly too dark or too bright.
+    private static func corrected(_ image: CIImage, within mask: CIImage) -> CIImage {
+        var output = image.applyingFilter("CIHighlightShadowAdjust", parameters: [
+            "inputHighlightAmount": 0.85,
+            "inputShadowAmount": 0.25,
+        ])
+        if let brightness = averageBrightness(of: output, within: mask) {
+            let target = 0.55
+            if brightness < 0.38 || brightness > 0.78 {
+                let ev = max(-0.6, min(0.9, log2(target / max(brightness, 0.05))))
+                output = output.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: ev])
+            }
         }
         return output
+            .applyingFilter("CIVibrance", parameters: ["inputAmount": 0.12])
+            .cropped(to: image.extent)
+    }
+
+    private static func averageBrightness(of image: CIImage, within mask: CIImage) -> Double? {
+        let masked = image.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage.empty(),
+            kCIInputMaskImageKey: mask,
+        ])
+        let average = masked.applyingFilter("CIAreaAverage", parameters: [
+            kCIInputExtentKey: CIVector(cgRect: image.extent),
+        ])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(average, toBitmap: &pixel, rowBytes: 16,
+                       bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                       format: .RGBAf, colorSpace: CGColorSpaceCreateDeviceRGB())
+        let alpha = Double(pixel[3])
+        guard alpha > 0.01 else { return nil }
+        // premultiplied: divide by coverage to get the sticker's own average
+        return (0.299 * Double(pixel[0]) + 0.587 * Double(pixel[1]) + 0.114 * Double(pixel[2])) / alpha
     }
 
     /// A rectangle whose area matches the mask, i.e. the sticker itself is rectangular.
@@ -122,9 +170,16 @@ enum StickerCutout {
             "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
             "inputBiasVector": CIVector(x: 1, y: 1, z: 1, w: 0),
         ])
+        // grow, then blur + threshold so the border follows smooth curves like a real die-cut
         let backing = silhouette
             .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: border])
-            .applyingGaussianBlur(sigma: 1.2)
+            .applyingGaussianBlur(sigma: Double(border) * 0.45)
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 5),
+                "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: -2),
+            ])
+            .applyingFilter("CIColorClamp")
+            .applyingGaussianBlur(sigma: 0.8)
             .cropped(to: canvas)
         let clear = CIImage(color: .clear).cropped(to: canvas)
         let sticker = art.composited(over: backing).composited(over: clear)
@@ -132,7 +187,7 @@ enum StickerCutout {
         let gradient = CIFilter.linearGradient()
         gradient.point0 = CGPoint(x: 0, y: canvas.height)
         gradient.point1 = CGPoint(x: canvas.width * 0.55, y: canvas.height * 0.45)
-        gradient.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 0.22)
+        gradient.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 0.08)
         gradient.color1 = CIColor(red: 1, green: 1, blue: 1, alpha: 0)
         let sheen = (gradient.outputImage ?? clear).cropped(to: canvas)
             .applyingFilter("CISourceAtopCompositing", parameters: [kCIInputBackgroundImageKey: sticker])
