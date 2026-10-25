@@ -109,6 +109,7 @@ struct StickerTile: View {
         VStack(alignment: .leading, spacing: 6) {
             StickerArtwork(url: sticker.imageURL, padding: 12)
                 .aspectRatio(1, contentMode: .fit)
+                .rotationEffect(.degrees(sticker.tilt), anchor: .center)
                 .overlay(alignment: .topTrailing) { ValueChip(value: sticker.value).padding(6) }
             Text(sticker.name)
                 .font(.subheadline.weight(.bold))
@@ -182,5 +183,39 @@ struct Checkerboard: View {
                 }
             }
         }
+    }
+}
+
+extension StickerCard {
+    /// A small, stable tilt (−3°…3°) so grids look slapped-on rather than machine-placed.
+    var tilt: Double {
+        let seed = id.uuidString.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+        return Double(seed % 61 - 30) / 10
+    }
+}
+
+/// Placeholder card shown while the feed loads.
+struct SkeletonFeedCard: View {
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Circle().frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: 6) {
+                    RoundedRectangle(cornerRadius: 4).frame(width: 180, height: 12)
+                    RoundedRectangle(cornerRadius: 4).frame(width: 110, height: 10)
+                }
+            }
+            RoundedRectangle(cornerRadius: 16).frame(height: 280)
+            RoundedRectangle(cornerRadius: 4).frame(width: 90, height: 12)
+        }
+        .foregroundStyle(Color.cardRaised)
+        .padding(14)
+        .card()
+        .opacity(pulse ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.9).repeatForever(), value: pulse)
+        .onAppear { pulse = true }
+        .accessibilityHidden(true)
     }
 }

@@ -256,30 +256,74 @@ struct StickerLoaderView: View {
 
 // MARK: - Badges
 
+extension Badge {
+    var tierColors: [Color] {
+        switch tier {
+        case "silver": [Color(white: 0.88), Color(white: 0.62)]
+        case "gold": [Color.brand, Color(red: 0.93, green: 0.55, blue: 0.0)]
+        case "platinum": [Color(red: 0.80, green: 0.86, blue: 1.0), Color(red: 0.55, green: 0.45, blue: 0.95)]
+        default: [Color(red: 0.93, green: 0.66, blue: 0.42), Color(red: 0.70, green: 0.40, blue: 0.20)]  // bronze
+        }
+    }
+}
+
+/// A round medal: tier gradient when earned, grey with a progress ring when locked.
+struct BadgeMedal: View {
+    let badge: Badge
+    var size: CGFloat = 58
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(badge.isEarned
+                      ? AnyShapeStyle(LinearGradient(colors: badge.tierColors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                      : AnyShapeStyle(Color.cardRaised))
+            Circle()
+                .strokeBorder(.white.opacity(badge.isEarned ? 0.55 : 0), lineWidth: size * 0.05)
+                .padding(size * 0.06)
+            Image(systemName: badge.icon)
+                .font(.system(size: size * 0.38, weight: .bold))
+                .foregroundStyle(badge.isEarned ? Color.onBrand.opacity(0.85) : Color.secondary.opacity(0.6))
+            if !badge.isEarned && badge.fraction > 0 {
+                Circle()
+                    .trim(from: 0, to: badge.fraction)
+                    .stroke(Color.brand, style: StrokeStyle(lineWidth: size * 0.06, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+        }
+        .frame(width: size, height: size)
+        .shadow(color: badge.isEarned ? badge.tierColors[1].opacity(0.35) : .clear, radius: 6, y: 3)
+    }
+}
+
 struct BadgesRow: View {
     let userID: UUID
     @State private var badges: [Badge] = []
     @State private var loaded = false
     @State private var selected: Badge?
 
+    private var earned: [Badge] { badges.filter(\.isEarned) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Badges", systemImage: "rosette")
-            if loaded && badges.isEmpty {
+            HStack {
+                SectionHeader(title: "Badges", systemImage: "rosette")
+                NavigationLink(value: Route.badges(userID)) {
+                    Text(badges.count > earned.count ? "\(earned.count)/\(badges.count) · See all" : "See all")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .fixedSize()
+            }
+            if loaded && earned.isEmpty {
                 Text("No badges yet. Log your first sticker to earn one.")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
-                        ForEach(badges) { badge in
+                        ForEach(earned) { badge in
                             Button { selected = badge } label: {
                                 VStack(spacing: 6) {
-                                    Image(systemName: badge.icon)
-                                        .font(.title2.weight(.bold))
-                                        .foregroundStyle(Color.onBrand)
-                                        .frame(width: 58, height: 58)
-                                        .background(Color.brand, in: Circle())
-                                        .overlay(Circle().stroke(Color.onBrand.opacity(0.15), lineWidth: 3))
+                                    BadgeMedal(badge: badge)
                                     Text(badge.title).font(.caption2.weight(.semibold)).lineLimit(1)
                                 }
                                 .frame(width: 72)
@@ -288,18 +332,104 @@ struct BadgesRow: View {
                             .accessibilityLabel("\(badge.title): \(badge.detail)")
                         }
                     }
+                    .padding(.vertical, 4)
                 }
             }
         }
-        .alert(selected?.title ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
-            Button("Nice", role: .cancel) {}
-        } message: {
-            Text(selected?.detail ?? "")
-        }
+        .sheet(item: $selected) { BadgeDetailSheet(badge: $0) }
         .task(id: userID) {
             badges = (try? await API.badges(for: userID)) ?? []
             loaded = true
         }
+    }
+}
+
+struct BadgesView: View {
+    let userID: UUID
+    @State private var badges: [Badge] = []
+    @State private var selected: Badge?
+
+    private let columns = [GridItem(.adaptive(minimum: 96), spacing: 14)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                let earnedCount = badges.filter(\.isEarned).count
+                if !badges.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(earnedCount) of \(badges.count) earned").font(.headline)
+                        ProgressView(value: Double(earnedCount), total: Double(max(badges.count, 1)))
+                            .tint(.brand)
+                    }
+                    .padding()
+                    .card()
+                }
+                LazyVGrid(columns: columns, spacing: 18) {
+                    ForEach(badges.sorted { ($0.isEarned ? 0 : 1, -$0.fraction) < ($1.isEarned ? 0 : 1, -$1.fraction) }) { badge in
+                        Button { selected = badge } label: {
+                            VStack(spacing: 6) {
+                                BadgeMedal(badge: badge, size: 70)
+                                Text(badge.title).font(.caption.weight(.bold)).lineLimit(1)
+                                if !badge.isEarned, let progress = badge.progress, let target = badge.target {
+                                    Text("\(progress)/\(target)").font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding()
+        }
+        .background(Color.bg)
+        .navigationTitle("Badges")
+        .sheet(item: $selected) { BadgeDetailSheet(badge: $0) }
+        .task { badges = (try? await API.badges(for: userID)) ?? badges }
+    }
+}
+
+private struct BadgeDetailSheet: View {
+    let badge: Badge
+
+    var body: some View {
+        VStack(spacing: 14) {
+            BadgeMedal(badge: badge, size: 110)
+            Text(badge.title).font(.title2.weight(.heavy))
+            Text((badge.tier ?? "bronze").capitalized)
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(LinearGradient(colors: badge.tierColors, startPoint: .leading, endPoint: .trailing), in: Capsule())
+                .foregroundStyle(Color.onBrand)
+            Text(badge.detail).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if !badge.isEarned, let progress = badge.progress, let target = badge.target {
+                ProgressView(value: Double(progress), total: Double(target)).tint(.brand).frame(maxWidth: 220)
+                Text("\(progress) of \(target)").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(28)
+        .presentationDetents([.height(380)])
+    }
+}
+
+/// Pops in from the top when a new badge is earned.
+struct NewBadgeToast: View {
+    let badge: Badge
+
+    var body: some View {
+        HStack(spacing: 12) {
+            BadgeMedal(badge: badge, size: 46)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New badge!").font(.caption.weight(.heavy)).foregroundStyle(.secondary)
+                Text(badge.title).font(.headline)
+                Text(badge.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.brand, lineWidth: 1.5))
+        .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+        .padding(.horizontal)
     }
 }
 

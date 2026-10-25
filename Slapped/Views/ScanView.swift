@@ -241,8 +241,10 @@ struct ScanView: View {
             Spacer()
             Text("Slapped!").font(.system(size: 40, weight: .black, design: .rounded))
             if let saved {
-                StickerArtwork(url: saved.imageURL)
-                    .frame(width: 240, height: 240)
+                SlapIn {
+                    StickerArtwork(url: saved.imageURL)
+                        .frame(width: 240, height: 240)
+                }
                 Text(saved.name).font(.title2.weight(.bold))
                 HStack {
                     Text("Added to your collection")
@@ -416,5 +418,22 @@ private struct LookalikeSheet: View {
             }
         }
         .padding(24)
+    }
+}
+
+/// Drops the content in like a sticker being slapped onto a wall.
+private struct SlapIn<Content: View>: View {
+    @ViewBuilder let content: Content
+    @State private var landed = false
+
+    var body: some View {
+        content
+            .scaleEffect(landed ? 1 : 1.8)
+            .rotationEffect(.degrees(landed ? -3 : -18))
+            .opacity(landed ? 1 : 0)
+            .onAppear {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) { landed = true }
+            }
+            .sensoryFeedback(.impact(weight: .heavy), trigger: landed)
     }
 }

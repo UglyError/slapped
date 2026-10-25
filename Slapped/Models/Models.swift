@@ -194,8 +194,17 @@ struct Badge: Codable, Identifiable, Hashable {
     let title: String
     let detail: String
     let icon: String
+    var tier: String?
+    var progress: Int?
+    var target: Int?
+    var earned: Bool?
 
     var id: String { code }
+    var isEarned: Bool { earned ?? true }
+    var fraction: Double {
+        guard let progress, let target, target > 0 else { return isEarned ? 1 : 0 }
+        return min(1, Double(progress) / Double(target))
+    }
 }
 
 struct BlockedUser: Codable, Identifiable, Hashable {
@@ -212,4 +221,5 @@ enum Route: Hashable {
     case activity
     case settings
     case blockedUsers
+    case badges(UUID)
 }

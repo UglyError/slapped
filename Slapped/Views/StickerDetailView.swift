@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import CoreLocation
 
 struct StickerDetailView: View {
     @Environment(AppState.self) private var app
@@ -175,9 +176,21 @@ struct StickerDetailView: View {
         .buttonStyle(.plain)
     }
 
+    private var distanceText: String? {
+        guard let here = LocationManager.shared.lastLocation else { return nil }
+        let meters = here.distance(from: CLLocation(latitude: sticker.lat, longitude: sticker.lng))
+        let measurement = Measurement(value: meters, unit: UnitLength.meters)
+        return measurement.formatted(.measurement(width: .abbreviated, usage: .road)) + " away"
+    }
+
     private var locationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: sticker.placeName ?? "Location", systemImage: "mappin.and.ellipse")
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader(title: sticker.placeName ?? "Location", systemImage: "mappin.and.ellipse")
+                if let distanceText {
+                    Text(distanceText).font(.caption.weight(.semibold)).foregroundStyle(.secondary).fixedSize()
+                }
+            }
             Map(initialPosition: .camera(MapCamera(centerCoordinate: sticker.coordinate, distance: 900)),
                 interactionModes: []) {
                 Annotation(sticker.name, coordinate: sticker.coordinate) {

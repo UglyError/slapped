@@ -18,6 +18,11 @@ struct FeedView: View {
                     }
                     .pickerStyle(.segmented)
 
+                    if !loaded && stickers.isEmpty {
+                        SkeletonFeedCard()
+                        SkeletonFeedCard()
+                    }
+
                     if let error {
                         EmptyStateView(systemImage: "wifi.exclamationmark", title: "Couldn't load the feed", message: error)
                     } else if loaded && stickers.isEmpty {

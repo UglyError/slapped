@@ -44,6 +44,7 @@ final class AppState {
     var unseenActivity = 0
     var needsNewPassword = false
     var authNotice: String?
+    var newBadge: Badge?
     var activitySeenAt = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: "activitySeenAt"))
 
     var userID: UUID? { session?.user.id }
@@ -99,6 +100,22 @@ final class AppState {
         pendingIncoming = (try? await API.pendingIncomingCount(for: userID)) ?? 0
         let recent = (try? await API.activity(limit: 30)) ?? []
         unseenActivity = recent.filter { $0.createdAt > activitySeenAt }.count
+        await checkNewBadges(for: userID)
+    }
+
+    /// Celebrates badges earned since the last check (silent the first time on a device).
+    private func checkNewBadges(for userID: UUID) async {
+        guard let badges = try? await API.badges(for: userID) else { return }
+        let earned = badges.filter(\.isEarned)
+        let key = "knownBadges-\(userID.uuidString)"
+        let known = UserDefaults.standard.stringArray(forKey: key)
+        UserDefaults.standard.set(earned.map(\.code), forKey: key)
+        guard let known else { return }
+        if let fresh = earned.first(where: { !known.contains($0.code) }) {
+            newBadge = fresh
+            try? await Task.sleep(for: .seconds(4))
+            if newBadge?.code == fresh.code { newBadge = nil }
+        }
     }
 }
 
@@ -209,5 +226,14 @@ struct MainTabView: View {
             .tag(Tab.profile)
         }
         .task { LocationManager.shared.requestPermission() }
+        .overlay(alignment: .top) {
+            if let badge = app.newBadge {
+                NewBadgeToast(badge: badge)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onTapGesture { app.newBadge = nil }
+                    .sensoryFeedback(.success, trigger: badge.code)
+            }
+        }
+        .animation(.spring(duration: 0.45, bounce: 0.35), value: app.newBadge?.code)
     }
 }

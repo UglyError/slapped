@@ -37,8 +37,13 @@ extension API {
         try await supabase.rpc("my_activity", params: ActivityParams(p_limit: limit)).execute().value
     }
 
+    /// Every badge with progress. Falls back to earned-only if migration 0003 isn't applied yet.
     static func badges(for userID: UUID) async throws -> [Badge] {
-        try await supabase.rpc("user_badges", params: UserParams(p_user: userID)).execute().value
+        do {
+            return try await supabase.rpc("badge_progress", params: UserParams(p_user: userID)).execute().value
+        } catch {
+            return try await supabase.rpc("user_badges", params: UserParams(p_user: userID)).execute().value
+        }
     }
 
     // MARK: Moderation

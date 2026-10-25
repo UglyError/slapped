@@ -99,6 +99,16 @@ struct ProfileView: View {
         VStack(spacing: 14) {
             AvatarView(url: profile.avatarUrl, name: profile.username, size: 88)
                 .overlay(Circle().stroke(Color.brand, lineWidth: 3))
+                .padding(6)
+                .background(Circle().fill(Color.bg))
+                .frame(maxWidth: .infinity)
+                .padding(.top, 36)
+                .background(alignment: .top) {
+                    LinearGradient(colors: [Color.brand.opacity(0.85), Color.brand.opacity(0.25), .clear],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: 110)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                }
             VStack(spacing: 4) {
                 Text(profile.titleName).font(.title2.weight(.heavy))
                 Text("@\(profile.username)").font(.subheadline).foregroundStyle(.secondary)

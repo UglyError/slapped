@@ -59,6 +59,7 @@ extension View {
             case .activity: ActivityView()
             case .settings: SettingsView()
             case .blockedUsers: BlockedUsersView()
+            case .badges(let id): BadgesView(userID: id)
             }
         }
     }
