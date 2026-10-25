@@ -82,4 +82,4 @@ project.yml       XcodeGen project definition
 
 ## Legal
 
-[Terms of Use](docs/terms.md) · [Privacy Policy](docs/privacy.md) · [Report a problem](https://github.com/UglyError/slapped/issues)
+Code: [MIT License](LICENSE) · App: [Terms of Use](docs/terms.md) · [Privacy Policy](docs/privacy.md) · [Report a problem](https://github.com/UglyError/slapped/issues)
