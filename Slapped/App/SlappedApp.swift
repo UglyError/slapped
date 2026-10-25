@@ -43,9 +43,34 @@ final class AppState {
     var pendingIncoming = 0
     var unseenActivity = 0
     var needsNewPassword = false
+    var authNotice: String?
     var activitySeenAt = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: "activitySeenAt"))
 
     var userID: UUID? { session?.user.id }
+
+    /// Confirm-email and reset-password links open the app here.
+    func handleAuthURL(_ url: URL) async {
+        do {
+            let newSession = try await supabase.auth.session(from: url)
+            session = newSession
+            isLoading = false
+            authNotice = nil
+            if url.absoluteString.contains("type=recovery") || API.consumeRecoveryRequest() {
+                needsNewPassword = true
+            }
+            await refresh()
+        } catch {
+            authNotice = "Email confirmed. Sign in to continue."
+        }
+    }
+
+    /// Picks up a session created while the app was in the background.
+    func resume() async {
+        guard session == nil, let current = try? await supabase.auth.session else { return }
+        session = current
+        isLoading = false
+        await refresh()
+    }
 
     func markActivitySeen() {
         activitySeenAt = .now
@@ -79,6 +104,7 @@ final class AppState {
 
 struct RootView: View {
     @Environment(AppState.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var app = app
@@ -95,7 +121,10 @@ struct RootView: View {
         .task { await app.start() }
         .onOpenURL { url in
             // confirm-email and reset-password links land here and sign the user in
-            Task { _ = try? await supabase.auth.session(from: url) }
+            Task { await app.handleAuthURL(url) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await app.resume() } }
         }
         .sheet(isPresented: $app.needsNewPassword) {
             NewPasswordView()

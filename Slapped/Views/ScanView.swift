@@ -5,7 +5,7 @@ import MapKit
 struct ScanView: View {
     var onFinished: () -> Void
 
-    private enum Stage { case start, processing, review, details, saving, done }
+    private enum Stage { case start, processing, review, details, checking, saving, done }
 
     @Environment(AppState.self) private var app
     @State private var stage: Stage = .start
@@ -22,6 +22,7 @@ struct ScanView: View {
     @State private var locationError: String?
     @State private var errorMessage: String?
     @State private var saved: StickerCard?
+    @State private var lookalike: DuplicateDetector.Match?
 
     private var finalImage: UIImage? { useOriginal ? original : (cutout ?? original) }
 
@@ -31,6 +32,7 @@ struct ScanView: View {
                 switch stage {
                 case .start: startView
                 case .processing: progressView("Peeling it off the wall…")
+                case .checking: progressView("Checking it's not already logged…")
                 case .review: reviewView
                 case .details, .saving: detailsView
                 case .done: doneView
@@ -65,6 +67,17 @@ struct ScanView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .sheet(item: Binding(get: { lookalike.map(LookalikeItem.init) }, set: { if $0 == nil { lookalike = nil } })) { item in
+                LookalikeSheet(match: item.match, newImage: finalImage) { same in
+                    lookalike = nil
+                    if same {
+                        errorMessage = APIError.alreadyLogged(name: item.match.sticker.name, by: item.match.sticker.finderUsername).localizedDescription
+                    } else {
+                        Task { await save(skipLookalikeCheck: true) }
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .withRoutes()
         }
     }
@@ -85,7 +98,7 @@ struct ScanView: View {
 
             VStack(spacing: 6) {
                 Text("Spotted a sticker?").font(.title2.weight(.heavy))
-                Text("Snap it and we'll cut it out, tag where you found it and add it to your collection.")
+                Text("Fill the frame with the sticker and snap it. We'll cut it out, fix the lighting and angle, and tag where you found it.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -281,10 +294,24 @@ struct ScanView: View {
         }
     }
 
-    private func save() async {
+    private func save(skipLookalikeCheck: Bool = false) async {
         guard let image = finalImage?.resized(maxDimension: 1024), let location else { return }
-        stage = .saving
         do {
+            if !skipLookalikeCheck {
+                stage = .checking
+                let nearby = (try? await API.nearby(location.coordinate, radius: 40, limit: 15)) ?? []
+                if let match = await DuplicateDetector.closestMatch(for: image, among: nearby) {
+                    if match.distance < DuplicateDetector.sameThreshold {
+                        throw APIError.alreadyLogged(name: match.sticker.name, by: match.sticker.finderUsername)
+                    }
+                    if match.distance < DuplicateDetector.askThreshold {
+                        stage = .details
+                        lookalike = match
+                        return
+                    }
+                }
+            }
+            stage = .saving
             let hashes = PerceptualHash.rotationHashes(image)
             // cheap check before uploading; the server re-checks atomically on create
             if try await API.isDuplicate(hashes: hashes, at: location.coordinate) {
@@ -349,5 +376,45 @@ struct CameraPicker: UIViewControllerRepresentable {
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.dismiss()
         }
+    }
+}
+
+private struct LookalikeItem: Identifiable {
+    let match: DuplicateDetector.Match
+    var id: UUID { match.sticker.id }
+}
+
+/// Shown when a nearby sticker looks similar but not certainly the same.
+private struct LookalikeSheet: View {
+    let match: DuplicateDetector.Match
+    let newImage: UIImage?
+    let onAnswer: (_ same: Bool) -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("Is this the same sticker?").font(.title2.weight(.heavy))
+            Text("“\(match.sticker.name)” by @\(match.sticker.finderUsername) was logged right here.")
+                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                VStack {
+                    StickerArtwork(url: match.sticker.imageURL, padding: 10).frame(height: 150)
+                    Text("Already logged").font(.caption.weight(.semibold))
+                }
+                VStack {
+                    ZStack {
+                        Checkerboard()
+                        if let newImage { Image(uiImage: newImage).resizable().scaledToFit().padding(10) }
+                    }
+                    .frame(height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    Text("Your scan").font(.caption.weight(.semibold))
+                }
+            }
+            HStack(spacing: 12) {
+                Button("Same sticker") { onAnswer(true) }.buttonStyle(BrandButtonStyle(filled: false))
+                Button("It's different") { onAnswer(false) }.buttonStyle(BrandButtonStyle())
+            }
+        }
+        .padding(24)
     }
 }

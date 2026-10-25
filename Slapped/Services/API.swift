@@ -6,12 +6,14 @@ import Supabase
 
 enum APIError: LocalizedError {
     case duplicateSticker
+    case alreadyLogged(name: String, by: String)
     case imageEncoding
     case server(String)
 
     var errorDescription: String? {
         switch self {
         case .duplicateSticker: "Someone already logged this sticker here. Find a new one!"
+        case .alreadyLogged(let name, let by): "“\(name)” was already logged here by @\(by). Find a new one!"
         case .imageEncoding: "Couldn't process that image."
         case .server(let message): message
         }

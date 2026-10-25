@@ -1,28 +1,27 @@
 import SwiftUI
 
 struct AuthView: View {
+    @Environment(AppState.self) private var app
     private enum Mode: Equatable { case signIn, signUp, verify, forgot, reset }
 
     @State private var mode: Mode = .signIn
     @State private var email = ""
     @State private var password = ""
     @State private var username = ""
-    @State private var code = ""
     @State private var agreed = false
     @State private var busy = false
     @State private var message: String?
 
     private var validEmail: Bool { email.contains("@") && email.contains(".") }
     private var validUsername: Bool { username.range(of: "^[a-zA-Z0-9_]{3,20}$", options: .regularExpression) != nil }
-    private var validCode: Bool { code.count >= 6 && code.allSatisfy(\.isNumber) }
 
     private var canSubmit: Bool {
         switch mode {
         case .signIn: validEmail && password.count >= 6
         case .signUp: validEmail && password.count >= 6 && validUsername && agreed
-        case .verify: validCode
+        case .verify: password.count >= 6
         case .forgot: validEmail
-        case .reset: validCode && password.count >= 6
+        case .reset: true
         }
     }
 
@@ -30,9 +29,9 @@ struct AuthView: View {
         switch mode {
         case .signIn: "Sign in"
         case .signUp: "Start hunting"
-        case .verify: "Verify email"
+        case .verify: "I've confirmed my email"
         case .forgot: "Send reset link"
-        case .reset: "Set new password"
+        case .reset: "Back to sign in"
         }
     }
 
@@ -51,6 +50,9 @@ struct AuthView: View {
 
                 fields
 
+                if let notice = app.authNotice {
+                    Text(notice).font(.footnote.weight(.semibold)).multilineTextAlignment(.center)
+                }
                 if let message {
                     Text(message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
@@ -70,6 +72,9 @@ struct AuthView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: mode) { message = nil }
+        .onChange(of: app.authNotice) { _, notice in
+            if notice != nil { mode = .signIn }
+        }
     }
 
     private var header: some View {
@@ -90,9 +95,9 @@ struct AuthView: View {
 
     private var subtitle: String {
         switch mode {
-        case .verify: "We emailed \(email). Open it on this iPhone and tap the link to finish signing up. If the email has a code instead, enter it below."
+        case .verify: "We sent a confirmation link to \(email). Open the email on this iPhone and tap the link. Slapped will open and sign you in."
         case .forgot: "Enter your email and we'll send you a reset link."
-        case .reset: "Open the email on this iPhone and tap the link to choose a new password. If the email has a code instead, enter it below with your new password."
+        case .reset: "We sent a reset link to \(email). Open the email on this iPhone and tap the link. Slapped will open so you can choose a new password."
         default: "Find stickers in the wild. Log them. Trade them."
         }
     }
@@ -117,14 +122,13 @@ struct AuthView: View {
                     .toggleStyle(CheckboxToggleStyle())
                 }
             case .verify:
-                codeField
+                EmptyView()
             case .forgot:
                 field("Email", text: $email, systemImage: "envelope")
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
             case .reset:
-                codeField
-                passwordField("New password (6+ characters)")
+                EmptyView()
             }
         }
         .textInputAutocapitalization(.never)
@@ -149,12 +153,6 @@ struct AuthView: View {
         case .signUp:
             EmptyView()
         }
-    }
-
-    private var codeField: some View {
-        field("Code from your email", text: $code, systemImage: "number")
-            .keyboardType(.numberPad)
-            .textContentType(.oneTimeCode)
     }
 
     private func passwordField(_ title: String) -> some View {
@@ -188,18 +186,16 @@ struct AuthView: View {
             case .signUp:
                 let signedIn = try await API.signUp(email: email, password: password, username: username)
                 if !signedIn {
-                    code = ""
                     mode = .verify
                 }
             case .verify:
-                try await API.verifySignUp(email: email, code: code)
+                // works once the link has been tapped, even if it didn't reopen the app
+                try await API.signIn(email: email, password: password)
             case .forgot:
                 try await API.sendPasswordReset(email: email)
-                code = ""
-                password = ""
                 mode = .reset
             case .reset:
-                try await API.resetPassword(email: email, code: code, newPassword: password)
+                mode = .signIn
             }
         } catch {
             message = friendly(error)
@@ -210,6 +206,9 @@ struct AuthView: View {
         let text = error.localizedDescription
         if text.localizedCaseInsensitiveContains("duplicate key") || text.localizedCaseInsensitiveContains("Database error saving new user") {
             return "That username is taken. Try another."
+        }
+        if text.localizedCaseInsensitiveContains("Email not confirmed") {
+            return "Tap the link in the confirmation email first, then try again."
         }
         if text.localizedCaseInsensitiveContains("Invalid login") {
             return "Wrong email or password."

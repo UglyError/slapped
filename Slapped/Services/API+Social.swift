@@ -93,6 +93,14 @@ extension API {
 
     static func sendPasswordReset(email: String) async throws {
         try await supabase.auth.resetPasswordForEmail(email, redirectTo: AppConfig.authCallbackURL)
+        UserDefaults.standard.set(Date.now.timeIntervalSince1970, forKey: "recoveryRequestedAt")
+    }
+
+    /// True (once) if a password reset was requested in the last hour.
+    static func consumeRecoveryRequest() -> Bool {
+        let requested = UserDefaults.standard.double(forKey: "recoveryRequestedAt")
+        UserDefaults.standard.removeObject(forKey: "recoveryRequestedAt")
+        return requested > 0 && Date.now.timeIntervalSince1970 - requested < 3600
     }
 
     static func resetPassword(email: String, code: String, newPassword: String) async throws {
