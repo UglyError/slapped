@@ -133,13 +133,14 @@ enum API {
     }
 
     static func createSticker(image: UIImage, name: String, details: String, hashes: [Int64],
-                              coordinate: CLLocationCoordinate2D, placeName: String) async throws -> StickerCard {
+                              coordinate: CLLocationCoordinate2D, placeName: String, series: String = "") async throws -> StickerCard {
         let path = try await uploadPNG(image, name: UUID().uuidString.lowercased())
         do {
             let url = try supabase.storage.from(AppConfig.storageBucket).getPublicURL(path: path)
             let id: UUID = try await supabase.rpc("create_sticker", params: CreateStickerParams(
                 p_name: name, p_description: details, p_image_url: url.absoluteString, p_hashes: hashes,
-                p_lat: coordinate.latitude, p_lng: coordinate.longitude, p_place_name: placeName
+                p_lat: coordinate.latitude, p_lng: coordinate.longitude, p_place_name: placeName,
+                p_series: series.isEmpty ? nil : series
             )).execute().value
             return try await sticker(id)
         } catch {
@@ -295,6 +296,7 @@ private struct DuplicateParams: Encodable { let p_hashes: [Int64]; let p_lat: Do
 private struct CreateStickerParams: Encodable {
     let p_name: String; let p_description: String; let p_image_url: String; let p_hashes: [Int64]
     let p_lat: Double; let p_lng: Double; let p_place_name: String
+    let p_series: String?
 }
 private struct ProposeParams: Encodable { let p_recipient: UUID; let p_offered: [UUID]; let p_requested: [UUID]; let p_message: String }
 private struct RespondParams: Encodable { let p_trade: UUID; let p_accept: Bool }

@@ -16,6 +16,7 @@ struct StickerDetailView: View {
     @State private var burst = false
     @State private var showZoom = false
     @State private var shareItems: [Any]?
+    @State private var showEdit = false
     @Environment(\.dismiss) private var dismiss
 
     init(sticker: StickerCard) {
@@ -51,6 +52,15 @@ struct StickerDetailView: View {
                     }
                     if let details = sticker.details {
                         Text(details).foregroundStyle(.secondary)
+                    }
+                    if let series = sticker.series {
+                        NavigationLink(value: Route.series(series)) {
+                            Label("Set: \(series)", systemImage: "square.stack.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Color.brand.opacity(0.18), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
 
@@ -112,6 +122,9 @@ struct StickerDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Share", systemImage: "square.and.arrow.up") { Task { await prepareShare() } }
+                    if sticker.finderId == app.userID {
+                        Button("Edit sticker", systemImage: "pencil") { showEdit = true }
+                    }
                     if canDelete {
                         Button("Delete sticker", systemImage: "trash", role: .destructive) { confirmDelete = true }
                     }
@@ -128,6 +141,9 @@ struct StickerDetailView: View {
         }
         .reportDialog(target: $reporting)
         .fullScreenCover(isPresented: $showZoom) { ZoomImageView(url: sticker.imageURL) }
+        .sheet(isPresented: $showEdit) {
+            EditStickerSheet(sticker: sticker) { await refresh() }
+        }
         .sheet(isPresented: Binding(get: { shareItems != nil }, set: { if !$0 { shareItems = nil } })) {
             ActivityShareSheet(items: shareItems ?? []).presentationDetents([.medium, .large])
         }

@@ -7,6 +7,7 @@ struct ExploreView: View {
     @State private var hunters: [ProfileStats] = []
     @State private var nearbyUnavailable = false
     @State private var weekly = false
+    @State private var sets: [SeriesSummary] = []
     @State private var weeklyHunters: [API.WeeklyHunter] = []
 
     @State private var query = ""
@@ -50,6 +51,21 @@ struct ExploreView: View {
             }
 
             rail("Fresh finds", systemImage: "sparkles", stickers: fresh)
+
+            if !sets.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(title: "Sets to collect", systemImage: "square.stack.fill").padding(.horizontal)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 12) {
+                            ForEach(sets) { summary in
+                                NavigationLink(value: Route.series(summary.series)) { SeriesCard(summary: summary) }
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            }
 
             if !hunters.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
@@ -154,6 +170,7 @@ struct ExploreView: View {
         fresh = (try? await freshTask) ?? fresh
         hunters = (try? await huntersTask) ?? hunters
         weeklyHunters = (try? await API.weeklyHunters()) ?? weeklyHunters
+        sets = (try? await API.seriesOverview()) ?? sets
 
         do {
             let location = try await LocationManager.shared.currentLocation()

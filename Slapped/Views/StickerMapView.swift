@@ -11,10 +11,17 @@ struct StickerMapView: View {
         NavigationStack {
             Map(position: $position) {
                 UserAnnotation()
-                ForEach(stickers) { sticker in
-                    Annotation(sticker.name, coordinate: sticker.coordinate, anchor: .bottom) {
-                        StickerPin(sticker: sticker, isSelected: selected?.id == sticker.id)
-                            .onTapGesture { withAnimation(.snappy) { selected = sticker } }
+                ForEach(clusters.filter { $0.stickers.count == 1 }) { cluster in
+                    Annotation(cluster.stickers[0].name, coordinate: cluster.center, anchor: .bottom) {
+                        StickerPin(sticker: cluster.stickers[0], isSelected: selected?.id == cluster.stickers[0].id)
+                            .onTapGesture { withAnimation(.snappy) { selected = cluster.stickers[0] } }
+                    }
+                    .annotationTitles(.hidden)
+                }
+                ForEach(clusters.filter { $0.stickers.count > 1 }) { cluster in
+                    Annotation("\(cluster.stickers.count) stickers", coordinate: cluster.center) {
+                        ClusterBubble(count: cluster.stickers.count)
+                            .onTapGesture { zoom(into: cluster) }
                     }
                     .annotationTitles(.hidden)
                 }
@@ -50,6 +57,34 @@ struct StickerMapView: View {
             .navigationTitle("Map")
             .navigationBarTitleDisplayMode(.inline)
             .withRoutes()
+        }
+    }
+
+    /// Groups pins that would overlap at the current zoom into one bubble.
+    private var clusters: [PinCluster] {
+        guard let region else {
+            return stickers.map { PinCluster(id: $0.id.uuidString, stickers: [$0], center: $0.coordinate) }
+        }
+        let cellLat = max(region.span.latitudeDelta / 9, 0.000_05)
+        let cellLng = max(region.span.longitudeDelta / 6, 0.000_05)
+        let groups = Dictionary(grouping: stickers) { sticker in
+            "\(Int(floor(sticker.lat / cellLat))):\(Int(floor(sticker.lng / cellLng)))"
+        }
+        return groups.map { key, items in
+            let lat = items.map(\.lat).reduce(0, +) / Double(items.count)
+            let lng = items.map(\.lng).reduce(0, +) / Double(items.count)
+            return PinCluster(id: items.count == 1 ? items[0].id.uuidString : key, stickers: items,
+                              center: CLLocationCoordinate2D(latitude: lat, longitude: lng))
+        }
+    }
+
+    private func zoom(into cluster: PinCluster) {
+        let lats = cluster.stickers.map(\.lat), lngs = cluster.stickers.map(\.lng)
+        guard let minLat = lats.min(), let maxLat = lats.max(), let minLng = lngs.min(), let maxLng = lngs.max() else { return }
+        let span = MKCoordinateSpan(latitudeDelta: max((maxLat - minLat) * 1.8, 0.002),
+                                    longitudeDelta: max((maxLng - minLng) * 1.8, 0.002))
+        withAnimation(.easeInOut) {
+            position = .region(MKCoordinateRegion(center: cluster.center, span: span))
         }
     }
 
@@ -113,5 +148,26 @@ private struct SelectedStickerCard: View {
         }
         .padding(12)
         .card()
+    }
+}
+
+private struct PinCluster: Identifiable {
+    let id: String
+    let stickers: [StickerCard]
+    let center: CLLocationCoordinate2D
+}
+
+private struct ClusterBubble: View {
+    let count: Int
+
+    var body: some View {
+        let size = min(64, 34 + CGFloat(count).squareRoot() * 4)
+        Text("\(count)")
+            .font(.system(size: size * 0.38, weight: .heavy, design: .rounded))
+            .foregroundStyle(Color.onBrand)
+            .frame(width: size, height: size)
+            .background(Color.brand, in: Circle())
+            .overlay(Circle().stroke(.white, lineWidth: 3))
+            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
     }
 }

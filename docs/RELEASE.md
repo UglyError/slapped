@@ -7,6 +7,7 @@ Everything runs from a browser. You never need a Mac.
 2. Paste all of [`supabase/migrations/0002_social_moderation.sql`](../supabase/migrations/0002_social_moderation.sql) and click **Run**.
    This adds comments, activity, badges, blocking, reporting and account deletion. It's safe to run again.
 3. Do the same with [`0003_more_badges.sql`](../supabase/migrations/0003_more_badges.sql) (the full badge set).
+4. Then [`0004_sets_and_editing.sql`](../supabase/migrations/0004_sets_and_editing.sql) (sticker sets and editing).
 
 ## 2. Email codes (3 min)
 The app verifies emails and resets passwords with a code instead of a link.

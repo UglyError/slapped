@@ -21,6 +21,7 @@ struct StickerCard: Codable, Identifiable, Hashable {
     let ownerAvatarUrl: String?
     let likedByMe: Bool
     let commentCount: Int?
+    let series: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, value
@@ -38,6 +39,7 @@ struct StickerCard: Codable, Identifiable, Hashable {
         case ownerAvatarUrl = "owner_avatar_url"
         case likedByMe = "liked_by_me"
         case commentCount = "comment_count"
+        case series
     }
 
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lng) }
@@ -222,4 +224,19 @@ enum Route: Hashable {
     case settings
     case blockedUsers
     case badges(UUID)
+    case series(String)
+}
+
+struct SeriesSummary: Codable, Identifiable, Hashable {
+    let series: String
+    let total: Int
+    let owned: Int
+    let coverUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case series, total, owned
+        case coverUrl = "cover_url"
+    }
+
+    var id: String { series.lowercased() }
 }

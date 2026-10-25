@@ -18,6 +18,7 @@ struct ScanView: View {
 
     @State private var name = ""
     @State private var notes = ""
+    @State private var series = ""
     @State private var location: CLLocation?
     @State private var placeName = ""
     @State private var locationError: String?
@@ -195,6 +196,8 @@ struct ScanView: View {
                     Divider()
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
                         .lineLimit(1...4)
+                    Divider()
+                    TextField("Artist or series (optional)", text: $series)
                 }
                 .padding()
                 .card()
@@ -337,7 +340,8 @@ struct ScanView: View {
                 details: notes,
                 hashes: hashes,
                 coordinate: location.coordinate,
-                placeName: placeName
+                placeName: placeName,
+                series: String(series.trimmingCharacters(in: .whitespaces).prefix(40))
             )
             withAnimation { stage = .done }
             await app.refresh()
@@ -354,6 +358,7 @@ struct ScanView: View {
         useOriginal = false
         name = ""
         notes = ""
+        series = ""
         location = nil
         placeName = ""
         locationError = nil

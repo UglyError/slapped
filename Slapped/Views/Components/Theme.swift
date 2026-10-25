@@ -60,6 +60,7 @@ extension View {
             case .settings: SettingsView()
             case .blockedUsers: BlockedUsersView()
             case .badges(let id): BadgesView(userID: id)
+            case .series(let name): SeriesView(series: name)
             }
         }
     }

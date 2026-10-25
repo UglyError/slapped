@@ -62,7 +62,7 @@ App Store / TestFlight steps are in **[docs/RELEASE.md](docs/RELEASE.md)**. Afte
 ## Setting up your own backend
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL Editor**: run the files in [`supabase/migrations`](supabase/migrations) in order (`0001`, `0002`, `0003`).
+2. **SQL Editor**: run the files in [`supabase/migrations`](supabase/migrations) in order (`0001` to `0004`).
 3. **Authentication → URL Configuration**: set Site URL to `slapped://auth-callback` and add `slapped://**` to Redirect URLs.
 4. Put your Project URL and anon key in `AppConfig` in [`SlappedApp.swift`](Slapped/App/SlappedApp.swift).
 

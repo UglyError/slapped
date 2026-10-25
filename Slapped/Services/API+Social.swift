@@ -46,6 +46,31 @@ extension API {
         }
     }
 
+    // MARK: Sets & editing
+
+    static func updateSticker(_ id: UUID, name: String, details: String, series: String) async throws {
+        do {
+            try await supabase.rpc("update_sticker", params: UpdateStickerParams(
+                p_sticker: id, p_name: name, p_description: details, p_series: series
+            )).execute()
+        } catch { throw mapped(error) }
+    }
+
+    static func seriesOverview() async throws -> [SeriesSummary] {
+        try await supabase.rpc("series_overview").execute().value
+    }
+
+    static func stickers(inSeries series: String) async throws -> [StickerCard] {
+        // exact, case-insensitive match (escape LIKE wildcards)
+        let pattern = series.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+        return try await supabase.from("sticker_cards").select()
+            .ilike("series", pattern: pattern)
+            .order("value", ascending: false)
+            .execute().value
+    }
+
     // MARK: Leaderboard
 
     struct WeeklyHunter: Identifiable {
@@ -156,6 +181,7 @@ extension API {
     }
 }
 
+private struct UpdateStickerParams: Encodable { let p_sticker: UUID; let p_name: String; let p_description: String; let p_series: String }
 private struct FinderRow: Decodable { let finder_id: UUID; let finder_username: String; let finder_avatar_url: String? }
 private struct CommentRow: Encodable { let sticker_id: UUID; let user_id: UUID; let body: String }
 private struct BlockRow: Encodable { let blocker_id: UUID; let blocked_id: UUID }
