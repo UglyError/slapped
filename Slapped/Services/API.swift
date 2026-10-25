@@ -28,7 +28,8 @@ enum API {
         let response = try await supabase.auth.signUp(
             email: email,
             password: password,
-            data: ["username": .string(username.lowercased())]
+            data: ["username": .string(username.lowercased())],
+            redirectTo: AppConfig.authCallbackURL
         )
         // false when the project requires email confirmation
         return response.session != nil

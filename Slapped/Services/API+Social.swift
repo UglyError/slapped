@@ -88,16 +88,20 @@ extension API {
     }
 
     static func resendSignUpCode(email: String) async throws {
-        try await supabase.auth.resend(email: email, type: .signup)
+        try await supabase.auth.resend(email: email, type: .signup, emailRedirectTo: AppConfig.authCallbackURL)
     }
 
     static func sendPasswordReset(email: String) async throws {
-        try await supabase.auth.resetPasswordForEmail(email)
+        try await supabase.auth.resetPasswordForEmail(email, redirectTo: AppConfig.authCallbackURL)
     }
 
     static func resetPassword(email: String, code: String, newPassword: String) async throws {
         _ = try await supabase.auth.verifyOTP(email: email, token: code, type: .recovery)
         _ = try await supabase.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    static func setNewPassword(_ password: String) async throws {
+        _ = try await supabase.auth.update(user: UserAttributes(password: password))
     }
 
     static func deleteAccount() async throws {

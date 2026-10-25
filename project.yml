@@ -27,6 +27,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.uglyerror.slapped
+            CFBundleURLSchemes:
+              - slapped
         UILaunchScreen:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:

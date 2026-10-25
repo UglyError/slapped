@@ -31,7 +31,7 @@ struct AuthView: View {
         case .signIn: "Sign in"
         case .signUp: "Start hunting"
         case .verify: "Verify email"
-        case .forgot: "Send reset code"
+        case .forgot: "Send reset link"
         case .reset: "Set new password"
         }
     }
@@ -90,9 +90,9 @@ struct AuthView: View {
 
     private var subtitle: String {
         switch mode {
-        case .verify: "We emailed a code to \(email). Enter it below."
-        case .forgot: "Enter your email and we'll send you a reset code."
-        case .reset: "Enter the code from your email and choose a new password."
+        case .verify: "We emailed \(email). Open it on this iPhone and tap the link to finish signing up. If the email has a code instead, enter it below."
+        case .forgot: "Enter your email and we'll send you a reset link."
+        case .reset: "Open the email on this iPhone and tap the link to choose a new password. If the email has a code instead, enter it below with your new password."
         default: "Find stickers in the wild. Log them. Trade them."
         }
     }
@@ -137,10 +137,10 @@ struct AuthView: View {
         case .signIn:
             Button("Forgot password?") { mode = .forgot }.font(.subheadline)
         case .verify:
-            Button("Resend code") {
+            Button("Resend email") {
                 Task {
                     try? await API.resendSignUpCode(email: email)
-                    message = "Sent a new code."
+                    message = "Sent it again. It can take a minute."
                 }
             }
             .font(.subheadline)

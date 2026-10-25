@@ -6,6 +6,9 @@ enum AppConfig {
     static let supabaseURL = URL(string: "https://olvjhnxrslklpzgaqcot.supabase.co")!
     static let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sdmpobnhyc2xrbHB6Z2FxY290Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMjYyMTgsImV4cCI6MjEwNzkwMjIxOH0.900SB9FDLyKktLez_oGrdpGse5Tw9ZtY5DtVFQH7JUE"
     static let storageBucket = "stickers"
+    /// Email links (confirm sign-up, reset password) open the app through this URL.
+    /// Must match Supabase → Authentication → URL Configuration.
+    static let authCallbackURL = URL(string: "slapped://auth-callback")!
     static let termsURL = URL(string: "https://github.com/UglyError/slapped/blob/main/docs/terms.md")!
     static let privacyURL = URL(string: "https://github.com/UglyError/slapped/blob/main/docs/privacy.md")!
     static let supportURL = URL(string: "https://github.com/UglyError/slapped/issues")!
@@ -39,6 +42,7 @@ final class AppState {
     var me: ProfileStats?
     var pendingIncoming = 0
     var unseenActivity = 0
+    var needsNewPassword = false
     var activitySeenAt = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: "activitySeenAt"))
 
     var userID: UUID? { session?.user.id }
@@ -50,8 +54,9 @@ final class AppState {
     }
 
     func start() async {
-        for await (_, session) in supabase.auth.authStateChanges {
+        for await (event, session) in supabase.auth.authStateChanges {
             self.session = session
+            if event == .passwordRecovery { needsNewPassword = true }
             isLoading = false
             if session != nil {
                 await refresh()
@@ -76,6 +81,7 @@ struct RootView: View {
     @Environment(AppState.self) private var app
 
     var body: some View {
+        @Bindable var app = app
         ZStack {
             Color.bg.ignoresSafeArea()
             if app.isLoading {
@@ -87,6 +93,59 @@ struct RootView: View {
             }
         }
         .task { await app.start() }
+        .onOpenURL { url in
+            // confirm-email and reset-password links land here and sign the user in
+            Task { _ = try? await supabase.auth.session(from: url) }
+        }
+        .sheet(isPresented: $app.needsNewPassword) {
+            NewPasswordView()
+        }
+    }
+}
+
+struct NewPasswordView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Choose a new password").font(.title2.weight(.heavy))
+                SecureField("New password (6+ characters)", text: $password)
+                    .textContentType(.newPassword)
+                    .padding()
+                    .card()
+                if let error {
+                    Text(error).font(.footnote).foregroundStyle(.red)
+                }
+                Button {
+                    Task { await save() }
+                } label: {
+                    if saving { ProgressView().tint(.onBrand) } else { Text("Save password") }
+                }
+                .buttonStyle(BrandButtonStyle())
+                .disabled(password.count < 6 || saving)
+                Spacer()
+            }
+            .padding(24)
+            .background(Color.bg)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() } }
+            }
+        }
+    }
+
+    private func save() async {
+        saving = true
+        do {
+            try await API.setNewPassword(password)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        saving = false
     }
 }
 
